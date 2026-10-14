@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paper Crawler</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Cellipse cx=%228%22 cy=%229%22 rx=%223%22 ry=%225%22/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!--
+    Layout:
+      #stage    the "screen" the spider lives on. Contains the scrolling paper,
+                the canvas overlay, and the title overlay.
+      #panel    the AI explainer docked on the right.
+  -->
+  <main id="stage">
+    <div id="scroller">
+      <div id="paper" class="paper-sheet">
+        <p class="paper-loading">Loading paper…</p>
+      </div>
+    </div>
+
+    <!-- Spider + silk are drawn here. pointer-events: none keeps the paper clickable. -->
+    <canvas id="spider-canvas"></canvas>
+
+    <div id="title-overlay" hidden></div>
+    <div id="toast" hidden></div>
+  </main>
+
+  <aside id="panel">
+    <div class="panel-controls">
+      <div class="brand">/[•]\ paper crawler</div>
+      <label class="ctl">paper
+        <select id="paper-select"></select>
+      </label>
+      <div class="ctl-row">
+        <label class="ctl">markup
+          <select id="intensity-select">
+            <option value="calm">1 · calm</option>
+            <option value="normal" selected>2 · normal</option>
+            <option value="wild">3 · wild</option>
+          </select>
+        </label>
+        <label class="ctl">explain for
+          <select id="level-select">
+            <option value="beginner">B · beginner</option>
+            <option value="student" selected>S · student</option>
+            <option value="researcher">R · researcher</option>
+          </select>
+        </label>
+      </div>
+      <details class="keys">
+        <summary>controls</summary>
+        <ul>
+          <li><kbd>mouse</kbd> spider chases cursor · <kbd>click</kbd> send it there</li>
+          <li><kbd>Space</kbd> pause · <kbd>F</kbd> camera follow · <kbd>T</kbd> title</li>
+          <li><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> markup intensity · <kbd>C</kbd> clear markup</li>
+          <li><kbd>B</kbd><kbd>S</kbd><kbd>R</kbd> explanation level</li>
+          <li>select text + <kbd>E</kbd> explain it · <kbd>D</kbd> re-drop spider</li>
+          <li><code>?debug</code> IK view</li>
+        </ul>
+      </details>
+    </div>
+
+    <div class="panel-card">
+      <div class="tabs">
+        <button class="tab active" data-tab="explain">Explainer</button>
+        <button class="tab" data-tab="notes">Crawler Notes <span id="notes-count">0</span></button>
+      </div>
+
+      <section class="tab-body" id="tab-explain">
+        <div id="ai-status"></div>
+        <div id="live">
+          <div class="live-head">▸ crawling: <span id="live-section">…</span></div>
+          <div id="live-text"></div>
+          <div id="live-key" hidden></div>
+        </div>
+        <div id="history"></div>
+        <div class="panel-actions">
+          <button id="export-md">⤓ export breakdown (.md)</button>
+        </div>
+      </section>
+
+      <section class="tab-body" id="tab-notes" hidden>
+        <p class="hint">Every metric, model and dataset the spider stepped on.</p>
+        <div id="notes-list"></div>
+        <div class="panel-actions">
+          <button id="export-notes">⤓ export notes (.json)</button>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <script type="module">
+    // =========================================================================
+    // Bootstrap: wire loader + crawler + analyst together, plus keyboard
+    // controls and ?debug.
+    // =========================================================================
+    import { listPapers, loadPaper } from './js/loader.js';
+    import { Crawler } from './js/crawler.js';
+    import { Analyst } from './js/analyst.js';
+
+    // The TikTok-style caption toggled with T. Change it here.
+    const TITLE_TEXT = 'I built a spider that reads ML papers for me';
+    const DEFAULT_PAPER = '1706.03762';
+
+    const params = new URLSearchParams(location.search);
+    const DEBUG = params.has('debug');
+
+    const $ = (id) => document.getElementById(id);
+    const stage = $('stage');
+
+    const crawler = new Crawler({ stage, scroller: $('scroller'), canvas: $('spider-canvas'), debug: DEBUG });
+    if (DEBUG) window.__crawler = crawler;
+
+    let toastTimer;
+    function toast(msg) {
+      const t = $('toast');
+      t.textContent = msg;
+      t.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.hidden = true; }, 2200);
+    }
+
+    const analyst = new Analyst({ crawler, toast });
+    if (DEBUG) window.__analyst = analyst;
+
+    // Title overlay
+    const overlay = $('title-overlay');
+    overlay.textContent = TITLE_TEXT;
+    overlay.hidden = true;
+
+    // ---- papers ------------------------------------------------------------
+    const select = $('paper-select');
+    const mount = $('paper');
+    let current = null;
+
+    async function openPaper(file) {
+      current?.destroy();
+      crawler.setPaper(null);
+      mount.innerHTML = '<p class="paper-loading">Loading paper…</p>';
+      try {
+        current = await loadPaper(file, mount);
+      } catch (e) {
+        mount.innerHTML = '';
+        const p = document.createElement('p');
+        p.className = 'paper-error';
+        p.textContent = String(e.message || e);
+        mount.append(p);
+        return;
+      }
+      $('scroller').scrollTop = 0;
+      crawler.setPaper(current);
+      analyst.setPaper(current);
+      const url = new URL(location.href);
+      url.searchParams.set('paper', file);
+      history.replaceState(null, '', url);
+      // Let fonts/layout settle, then drop in.
+      setTimeout(() => crawler.drop(), 500);
+    }
+
+    const papers = await listPapers();
+    if (!papers.length) {
+      mount.innerHTML = '<p class="paper-error">No papers yet. Run:\n\n  python fetch_paper.py 1706.03762\n\nthen reload.</p>';
+    } else {
+      for (const p of papers) {
+        const o = document.createElement('option');
+        o.value = p.file;
+        o.textContent = `${p.id} · ${p.title}`;
+        select.append(o);
+      }
+      const wanted = params.get('paper');
+      const pick = papers.find((p) => p.file === wanted || p.id === wanted) ||
+                   papers.find((p) => p.id === DEFAULT_PAPER) || papers[0];
+      select.value = pick.file;
+      select.addEventListener('change', () => openPaper(select.value));
+      openPaper(pick.file);
+    }
+
+    // ---- controls ----------------------------------------------------------
+    const intensitySel = $('intensity-select');
+    const levelSel = $('level-select');
+    intensitySel.addEventListener('change', () => crawler.setIntensity(intensitySel.value));
+    levelSel.addEventListener('change', () => analyst.setLevel(levelSel.value));
+
+    const INTENSITIES = { '1': 'calm', '2': 'normal', '3': 'wild' };
+    const LEVELS = { b: 'beginner', s: 'student', r: 'researcher' };
+
+    addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target.closest?.('select, input, textarea')) return;
+      const k = e.key.toLowerCase();
+      if (e.key === ' ') {
+        e.preventDefault();
+        toast(crawler.togglePause() ? 'paused' : 'crawling');
+      } else if (k === 'f') {
+        toast(crawler.toggleFollow() ? 'camera: follow' : 'camera: free');
+      } else if (k === 't') {
+        overlay.hidden = !overlay.hidden;
+      } else if (INTENSITIES[k]) {
+        crawler.setIntensity(INTENSITIES[k]);
+        intensitySel.value = INTENSITIES[k];
+        toast(`markup: ${INTENSITIES[k]}`);
+      } else if (LEVELS[k]) {
+        analyst.setLevel(LEVELS[k]);
+      } else if (k === 'e') {
+        analyst.explainSelection();
+      } else if (k === 'c') {
+        crawler.clearMarkup();
+        toast('markup cleared');
+      } else if (k === 'd') {
+        crawler.drop();
+      }
+    });
+  </script>
+</body>
+</html>

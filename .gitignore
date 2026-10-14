@@ -1,0 +1,13 @@
+# Secrets: the API key stays on your machine
+.env
+
+# Cached AI explanations (regenerated on demand)
+cache/*
+!cache/.gitkeep
+
+# Downloaded papers: fetch your own with fetch_paper.py
+papers/*
+!papers/.gitkeep
+
+__pycache__/
+.DS_Store

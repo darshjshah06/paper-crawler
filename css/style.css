@@ -309,6 +309,49 @@ body {
   font: 12px system-ui, sans-serif;
   text-transform: none;
 }
+/* Add a paper: text box + PDF picker */
+.add-paper { display: flex; gap: 6px; }
+.add-paper input {
+  flex: 1;
+  min-width: 0;
+  background: #151922;
+  color: #e6eef2;
+  border: 1px dashed #2f3a4a;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: 12px system-ui, sans-serif;
+}
+.add-paper input:focus { outline: none; border-color: var(--teal); }
+.add-paper button {
+  background: #151922;
+  color: #a9b6c2;
+  border: 1px solid #262c38;
+  border-radius: 6px;
+  padding: 0 9px;
+  font: 11px var(--mono);
+  cursor: pointer;
+}
+.add-paper button:hover { border-color: var(--teal); color: var(--teal); }
+#add-status { font: 11px var(--mono); color: var(--teal); }
+#add-status.error { color: #ff7a7a; }
+#add-status[hidden] { display: none; }
+
+/* Shown while a file is dragged over the window */
+#drop-overlay {
+  position: absolute;
+  inset: 14px;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  border: 3px dashed var(--teal);
+  border-radius: 14px;
+  background: rgba(10, 12, 16, .55);
+  color: #e8fbff;
+  font: 600 22px var(--mono);
+  pointer-events: none;
+}
+#drop-overlay[hidden] { display: none; }
+
 .keys summary { cursor: pointer; font: 11px var(--mono); color: #7f8b99; }
 .keys ul { margin: 6px 0 0; padding-left: 16px; color: #a9b6c2; font-size: 12px; }
 .keys li { margin: 2px 0; }

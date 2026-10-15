@@ -20,11 +20,16 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+import zlib
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+import fetch_paper
 
 # ---------------------------------------------------------------------------
 # Settings you might want to change
@@ -199,6 +204,54 @@ def stream_claude(prompt, use_fallbacks=True):
 
 
 # ---------------------------------------------------------------------------
+# Adding papers from the page: a dropped arXiv PDF, or a pasted link/ID
+# ---------------------------------------------------------------------------
+
+MAX_PDF_BYTES = 80 * 1024 * 1024
+# arXiv stamps every PDF it serves with "arXiv:2106.09685v2 [cs.CL] 16 Oct 2021"
+# down the left margin. The [category] part tells it apart from cited papers.
+STAMP_RE = re.compile(rb"arXiv:\s*(\d{4}\.\d{4,5})(?:v\d+)?\s*\[[A-Za-z\-.]+\]")
+STAMP_OLD_RE = re.compile(rb"arXiv:\s*([a-z\-]+(?:\.[A-Z]{2})?/\d{7})(?:v\d+)?\s*\[[A-Za-z\-.]+\]")
+fetch_lock = threading.Lock()  # one arXiv download at a time (they ask for politeness)
+
+
+def arxiv_id_from_pdf(data, filename=""):
+    """Find which arXiv paper a PDF is. We only need the ID: the app reads the
+    paper's HTML version, which has real words for the spider to stand on.
+
+    1. The arXiv margin stamp. Page content is usually zlib-compressed, so we
+       inflate each stream and search it.
+    2. Failing that, the file name (arXiv downloads are named like 1706.03762v7.pdf).
+    """
+    chunks = [data]
+    for m in re.finditer(rb"stream\r?\n(.*?)endstream", data, re.S):
+        try:
+            chunks.append(zlib.decompress(m.group(1)))
+        except zlib.error:
+            pass
+    for chunk in chunks:
+        m = STAMP_RE.search(chunk) or STAMP_OLD_RE.search(chunk)
+        if m:
+            return m.group(1).decode()
+    try:
+        return re.sub(r"v\d+$", "", fetch_paper.parse_arxiv_id(filename))
+    except ValueError:
+        return None
+
+
+def add_paper(arxiv_id):
+    """Download a paper (unless we already have it). Returns its list entry."""
+    with fetch_lock:
+        stem = fetch_paper.file_stem(arxiv_id)
+        meta_file = PAPERS_DIR / f"{stem}.json"
+        if meta_file.exists() and (PAPERS_DIR / f"{stem}.html").exists():
+            meta = json.loads(meta_file.read_text())
+        else:
+            meta = fetch_paper.fetch_paper(arxiv_id)
+    return {"id": meta["id"], "file": meta["file"] if "file" in meta else stem, "title": meta["title"]}
+
+
+# ---------------------------------------------------------------------------
 # HTTP handler
 # ---------------------------------------------------------------------------
 
@@ -239,7 +292,10 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ---- /api/explain ------------------------------------------------------
     def do_POST(self):
-        if self.path.split("?", 1)[0] != "/api/explain":
+        path = self.path.split("?", 1)[0]
+        if path == "/api/add":
+            return self.handle_add()
+        if path != "/api/explain":
             return self.send_error(404)
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -295,6 +351,38 @@ class Handler(SimpleHTTPRequestHandler):
             }, indent=2))
         self.sse("done", {"cached": False})
 
+    # ---- /api/add -----------------------------------------------------------
+    def handle_add(self):
+        """Body is either a PDF (Content-Type: application/pdf, file name in
+        X-Filename) or JSON {"query": "<arXiv link or ID>"}."""
+        length = int(self.headers.get("Content-Length", 0))
+        if length > MAX_PDF_BYTES:
+            return self.send_json({"error": "That file is too big (80 MB max)."}, 413)
+        body = self.rfile.read(length)
+
+        if self.headers.get("Content-Type", "").startswith("application/pdf"):
+            name = urllib.parse.unquote(self.headers.get("X-Filename", ""))
+            if not body.startswith(b"%PDF"):
+                return self.send_json({"error": "That doesn't look like a PDF."}, 400)
+            arxiv_id = arxiv_id_from_pdf(body, name)
+            if not arxiv_id:
+                return self.send_json({"error": (
+                    "Couldn't tell which arXiv paper this PDF is. Paper Crawler reads "
+                    "arXiv papers only. Try pasting its arXiv link instead.")}, 422)
+        else:
+            try:
+                query = str(json.loads(body or b"{}").get("query", ""))
+                arxiv_id = re.sub(r"v\d+$", "", fetch_paper.parse_arxiv_id(query))
+            except ValueError:
+                return self.send_json({"error": "Paste an arXiv link or ID, like 1706.03762."}, 400)
+
+        print(f"[add] {arxiv_id}")
+        try:
+            return self.send_json(add_paper(arxiv_id))
+        except Exception as e:
+            print(f"[add] error: {e}", file=sys.stderr)
+            return self.send_json({"error": str(e)}, 502)
+
     def sse(self, event, data):
         """Write one SSE frame. Returns False if the client disconnected."""
         try:
@@ -326,7 +414,7 @@ def main():
     print(f"Paper Crawler running at http://localhost:{PORT}")
     print(f"  model: {MODEL}")
     print(f"  AI explainer: {'ON' if API_KEY else 'OFF (set ANTHROPIC_API_KEY in env or .env)'}")
-    print(f"  papers: {len(list_papers())} in papers/ (add more with: python fetch_paper.py <arxiv-id>)")
+    print(f"  papers: {len(list_papers())} in papers/ (drop an arXiv PDF on the page, or: python fetch_paper.py <arxiv-id>)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

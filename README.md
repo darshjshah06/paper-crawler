@@ -26,6 +26,8 @@ python fetch_paper.py https://arxiv.org/abs/2005.14165
 python fetch_paper.py --batch "1706.03762 2005.14165 1810.04805"
 ```
 
+Or skip the terminal: **drag an arXiv PDF onto the page** (or click **PDF** in the panel, or paste an arXiv link and press **go**). The spider drops onto it as soon as it's downloaded.
+
 Every paper in `papers/` appears in the dropdown, and you can switch between them live.
 
 ## Controls
@@ -51,7 +53,7 @@ The panel also has export buttons. **Export breakdown (.md)** saves a Markdown "
 ```
 fetch_paper.py      downloads an arXiv paper as HTML into papers/
 papers/             saved papers ({id}.html + {id}.json metadata + index.json)
-serve.py            static server + /api/explain proxy to Claude (holds the API key)
+serve.py            static server, /api/explain proxy to Claude (holds the API key), /api/add for dropped PDFs
 cache/              cached AI explanations, one JSON file per paper/section/level
 index.html          entry point (also wires the modules together + keyboard controls)
 css/style.css       paper theme + all markup effect classes (.m-*)
@@ -71,6 +73,8 @@ Browsers won't let a page on `localhost` fetch arxiv.org directly (that's CORS),
 2. **HTML.** arXiv renders LaTeX to HTML with a tool called LaTeXML. Newer papers (mostly late 2023 onward) live at `arxiv.org/html/{id}`. Older ones are at `ar5iv.labs.arxiv.org/html/{id}`. We try the first, fall back to the second, and print a clear error if neither has the paper.
 3. **Fix links.** Figure `src` attributes are relative (`x1.png`), so we rewrite them to absolute arXiv URLs. That way the figures still load from our local copy.
 4. **Be polite.** We send a descriptive User-Agent and wait about 3 seconds between requests, as arXiv's API terms ask.
+
+**Adding papers from the page.** A dropped PDF is POSTed to `serve.py`'s `/api/add`. The app never reads text out of the PDF itself: PDFs have no real words to stand on. Instead the server works out *which* arXiv paper it is, then runs the same download as `fetch_paper.py`. Every PDF arXiv serves has a stamp down the left margin like `arXiv:2106.09685v2 [cs.CL] 16 Oct 2021`. The server inflates the PDF's compressed page streams with `zlib` and looks for that stamp; the `[category]` part tells it apart from cited papers. If there's no stamp, it tries the file name (`1706.03762v7.pdf`). PDFs that aren't from arXiv get a clear error.
 
 ### 2. The page (`loader.js`)
 

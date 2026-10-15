@@ -25,6 +25,7 @@
     <canvas id="spider-canvas"></canvas>
 
     <div id="title-overlay" hidden></div>
+    <div id="drop-overlay" hidden>drop the PDF to crawl it</div>
     <div id="toast" hidden></div>
   </main>
 
@@ -34,6 +35,16 @@
       <label class="ctl">paper
         <select id="paper-select"></select>
       </label>
+      <!-- Add a paper: drop an arXiv PDF (here or anywhere on the page), pick
+           one, or paste an arXiv link. serve.py works out which paper it is
+           and downloads its HTML version. -->
+      <form id="add-paper" class="add-paper">
+        <input id="add-input" type="text" placeholder="drop a PDF or paste an arXiv link" autocomplete="off">
+        <button type="button" id="add-pick" title="choose a PDF">PDF</button>
+        <button type="submit">go</button>
+        <input id="add-file" type="file" accept="application/pdf,.pdf" hidden>
+      </form>
+      <div id="add-status" hidden></div>
       <div class="ctl-row">
         <label class="ctl">markup
           <select id="intensity-select">
@@ -162,7 +173,8 @@
 
     const papers = await listPapers();
     if (!papers.length) {
-      mount.innerHTML = '<p class="paper-error">No papers yet. Run:\n\n  python fetch_paper.py 1706.03762\n\nthen reload.</p>';
+      mount.innerHTML = '<p class="paper-error">No papers yet. Drop an arXiv PDF anywhere on this page, or paste an arXiv link in the box on the right.</p>';
+      select.addEventListener('change', () => openPaper(select.value));
     } else {
       for (const p of papers) {
         const o = document.createElement('option');
@@ -177,6 +189,74 @@
       select.addEventListener('change', () => openPaper(select.value));
       openPaper(pick.file);
     }
+
+    // ---- add a paper (PDF drop / pick / pasted link) -------------------------
+    const addStatus = $('add-status');
+    let adding = false;
+
+    function setAddStatus(msg, isError = false) {
+      addStatus.textContent = msg;
+      addStatus.classList.toggle('error', isError);
+      addStatus.hidden = !msg;
+    }
+
+    async function addPaper(body, headers) {
+      if (adding) return;
+      adding = true;
+      setAddStatus('finding the paper on arXiv…');
+      try {
+        const res = await fetch('/api/add', { method: 'POST', headers, body });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        if (![...select.options].some((o) => o.value === data.file)) {
+          const o = document.createElement('option');
+          o.value = data.file;
+          o.textContent = `${data.id} · ${data.title}`;
+          select.append(o);
+        }
+        select.value = data.file;
+        setAddStatus('');
+        $('add-input').value = '';
+        toast(data.title);
+        openPaper(data.file);
+      } catch (e) {
+        setAddStatus(String(e.message || e), true);
+      } finally {
+        adding = false;
+      }
+    }
+
+    function addPdf(file) {
+      if (!file) return;
+      if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
+        setAddStatus('That isn\'t a PDF.', true);
+        return;
+      }
+      addPaper(file, { 'Content-Type': 'application/pdf', 'X-Filename': encodeURIComponent(file.name) });
+    }
+
+    $('add-paper').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const q = $('add-input').value.trim();
+      if (q) addPaper(JSON.stringify({ query: q }), { 'Content-Type': 'application/json' });
+    });
+    $('add-pick').addEventListener('click', () => $('add-file').click());
+    $('add-file').addEventListener('change', (e) => { addPdf(e.target.files[0]); e.target.value = ''; });
+
+    // Drag a PDF anywhere onto the window.
+    const dropOverlay = $('drop-overlay');
+    let dragDepth = 0;
+    const hasFiles = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+    addEventListener('dragenter', (e) => { if (hasFiles(e)) { dragDepth++; dropOverlay.hidden = false; } });
+    addEventListener('dragleave', (e) => { if (hasFiles(e) && --dragDepth <= 0) { dragDepth = 0; dropOverlay.hidden = true; } });
+    addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+    addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth = 0;
+      dropOverlay.hidden = true;
+      addPdf(e.dataTransfer.files[0]);
+    });
 
     // ---- controls ----------------------------------------------------------
     const intensitySel = $('intensity-select');

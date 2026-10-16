@@ -1,6 +1,7 @@
 #!/bin/bash
-# Installs (or reinstalls) the daily auto-commit as a launchd agent: runs every
-# day at 18:30. If the Mac is asleep then, it runs on the next wake.
+# Installs (or reinstalls) the auto-commit as a launchd agent. launchd wakes it
+# daily at 18:30 (or on the next wake if the Mac is asleep), and autocommit.sh
+# only commits when 3 days have passed since its last run.
 #   ./tools/autocommit/install.sh            install
 #   ./tools/autocommit/install.sh uninstall  remove
 set -eu
@@ -29,4 +30,4 @@ cat > "$PLIST" <<PL
 </dict></plist>
 PL
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
-echo "installed $LABEL (daily at 18:30, log: $LOG)"
+echo "installed $LABEL (every 3 days at 18:30, log: $LOG)"

@@ -163,14 +163,14 @@ Some papers have no HTML rendering (their LaTeX failed to convert). `fetch_paper
 - `SECTION_PROMPT`, `TLDR_PROMPT`, `SELECTION_PROMPT` and `LEVELS` in `serve.py`: what Claude is asked.
 - `.m-*` classes in `css/style.css`: what each markup looks like.
 
-## Daily auto-commit
+## Auto-commit every 3 days
 
-`tools/autocommit/` commits and pushes any pending changes once a day (18:30, via a macOS launchd agent), using one of 10 short, casual commit messages and never repeating the previous one. If nothing changed, it does nothing.
+`tools/autocommit/` commits and pushes any pending changes every 3 days at 18:30. A macOS launchd agent wakes it daily, and the script skips until 3 days have passed since its last run (tracked in `.git/autocommit-last-run`). It uses one of 10 short, casual commit messages and never repeating the previous one. If nothing changed, it does nothing.
 
 ```bash
 ./tools/autocommit/install.sh             # install / reinstall
 ./tools/autocommit/install.sh uninstall   # remove
-./tools/autocommit/autocommit.sh          # run once by hand
+./tools/autocommit/autocommit.sh --force  # run once by hand, ignoring the 3-day wait
 ```
 
 Log: `~/Library/Logs/paper-crawler-autocommit.log`. Edit the `MESSAGES` list in `autocommit.sh` to change the wording.

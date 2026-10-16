@@ -75,9 +75,8 @@ export class Analyst {
     }
     if (!this.aiEnabled) {
       this.el.status.textContent =
-        'AI explainer is off: no ANTHROPIC_API_KEY.\n' +
-        'Add ANTHROPIC_API_KEY=sk-ant-... to a .env file next to serve.py and restart it. ' +
-        'The spider keeps crawling either way. (Cached explanations still play.)';
+        'Explanations are off. Add ANTHROPIC_API_KEY to a .env file next to serve.py ' +
+        'and restart it. The spider keeps crawling, and saved explanations still play.';
     }
     this.pump();
   }
@@ -260,7 +259,7 @@ export class Analyst {
     this.el.liveText.classList.remove('typing');
 
     if (error && !target) {
-      this.el.liveText.innerHTML = `<span style="color:#ffb08a">⚠ ${escapeHtml(error)}</span>`;
+      this.el.liveText.innerHTML = `<span style="color:#ff3b30">${escapeHtml(error)}</span>`;
       if (/API_KEY/.test(error)) this.aiEnabled = false;
       return;
     }
@@ -273,7 +272,7 @@ export class Analyst {
     this.renderHistory();
     if (key) {
       this.liveKey = { phrase: key, sectionIndex: item.sectionIndex };
-      this.el.liveKey.textContent = `KEY ▸ ${key}`;
+      this.el.liveKey.textContent = `Key point · ${key}`;
       this.el.liveKey.hidden = false;
       this.crawler.pointAt(key, item.sectionIndex);
     }
@@ -294,7 +293,7 @@ export class Analyst {
         <div class="h-head"><span>${escapeHtml(h.mode === 'tldr' ? 'TL;DR' : h.label)}</span>
           <span class="h-tag">${h.mode === 'selection' ? 'selection · ' : ''}${h.level}</span></div>
         <div class="h-text">${render(h.text)}</div>
-        ${h.key ? `<div class="h-key" data-i="${this.history.length - 2 - i}">KEY ▸ ${escapeHtml(h.key)}</div>` : ''}
+        ${h.key ? `<div class="h-key" data-i="${this.history.length - 2 - i}">Key point · ${escapeHtml(h.key)}</div>` : ''}
       </div>`).join('');
     for (const k of this.el.history.querySelectorAll('.h-key')) {
       k.addEventListener('click', () => {

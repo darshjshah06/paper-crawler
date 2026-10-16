@@ -30,77 +30,78 @@
   </main>
 
   <aside id="panel">
-    <div class="panel-controls">
-      <div class="brand">/[•]\ paper crawler</div>
-      <label class="ctl">paper
-        <select id="paper-select"></select>
-      </label>
+    <header class="panel-header">
+      <h1 class="brand">Paper Crawler</h1>
+      <select id="paper-select" class="paper-picker" aria-label="Paper"></select>
       <!-- Add a paper: drop an arXiv PDF (here or anywhere on the page), pick
-           one, or paste an arXiv link. serve.py works out which paper it is
-           and downloads its HTML version. -->
+           one, or paste an arXiv link and press Return. serve.py works out
+           which paper it is and downloads its HTML version. -->
       <form id="add-paper" class="add-paper">
-        <input id="add-input" type="text" placeholder="drop a PDF or paste an arXiv link" autocomplete="off">
-        <button type="button" id="add-pick" title="choose a PDF">PDF</button>
-        <button type="submit">go</button>
+        <input id="add-input" type="text" placeholder="Paste an arXiv link or drop a PDF" autocomplete="off">
+        <button type="button" id="add-pick" title="Choose a PDF" aria-label="Choose a PDF">+</button>
         <input id="add-file" type="file" accept="application/pdf,.pdf" hidden>
       </form>
       <div id="add-status" hidden></div>
-      <div class="ctl-row">
-        <label class="ctl">markup
-          <select id="intensity-select">
-            <option value="calm">1 · calm</option>
-            <option value="normal" selected>2 · normal</option>
-            <option value="wild">3 · wild</option>
-          </select>
-        </label>
-        <label class="ctl">explain for
-          <select id="level-select">
-            <option value="beginner">B · beginner</option>
-            <option value="student" selected>S · student</option>
-            <option value="researcher">R · researcher</option>
-          </select>
-        </label>
+    </header>
+
+    <div class="settings">
+      <div class="setting">
+        <span class="setting-label">Markup</span>
+        <select id="intensity-select" data-segmented>
+          <option value="calm">Calm</option>
+          <option value="normal" selected>Normal</option>
+          <option value="wild">Wild</option>
+        </select>
       </div>
+      <div class="setting">
+        <span class="setting-label">Level</span>
+        <select id="level-select" data-segmented>
+          <option value="beginner">Beginner</option>
+          <option value="student" selected>Student</option>
+          <option value="researcher">Researcher</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="tabs segmented">
+      <button class="tab active" data-tab="explain">Explainer</button>
+      <button class="tab" data-tab="notes">Notes <span id="notes-count">0</span></button>
+    </div>
+
+    <section class="tab-body" id="tab-explain">
+      <div id="ai-status"></div>
+      <div id="live">
+        <div class="live-head">Now reading</div>
+        <div id="live-section">…</div>
+        <div id="live-text"></div>
+        <div id="live-key" hidden></div>
+      </div>
+      <div id="history"></div>
+    </section>
+
+    <section class="tab-body" id="tab-notes" hidden>
+      <p class="hint">Metrics, models and datasets the spider stepped on.</p>
+      <div id="notes-list"></div>
+    </section>
+
+    <footer class="panel-footer">
+      <button id="export-md">Export Breakdown</button>
+      <button id="export-notes">Export Notes</button>
       <details class="keys">
-        <summary>controls</summary>
-        <ul>
-          <li><kbd>mouse</kbd> spider chases cursor · <kbd>click</kbd> send it there</li>
-          <li><kbd>Space</kbd> pause · <kbd>F</kbd> camera follow · <kbd>T</kbd> title</li>
-          <li><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> markup intensity · <kbd>C</kbd> clear markup</li>
-          <li><kbd>B</kbd><kbd>S</kbd><kbd>R</kbd> explanation level</li>
-          <li>select text + <kbd>E</kbd> explain it · <kbd>D</kbd> re-drop spider</li>
-          <li><code>?debug</code> IK view</li>
-        </ul>
+        <summary>Shortcuts</summary>
+        <dl>
+          <dt>Click</dt><dd>Send the spider there</dd>
+          <dt>Space</dt><dd>Pause</dd>
+          <dt>F</dt><dd>Camera follow</dd>
+          <dt>T</dt><dd>Title overlay</dd>
+          <dt>1 2 3</dt><dd>Markup intensity</dd>
+          <dt>B S R</dt><dd>Explanation level</dd>
+          <dt>E</dt><dd>Explain selected text</dd>
+          <dt>C</dt><dd>Clear markup</dd>
+          <dt>D</dt><dd>Re-drop the spider</dd>
+        </dl>
       </details>
-    </div>
-
-    <div class="panel-card">
-      <div class="tabs">
-        <button class="tab active" data-tab="explain">Explainer</button>
-        <button class="tab" data-tab="notes">Crawler Notes <span id="notes-count">0</span></button>
-      </div>
-
-      <section class="tab-body" id="tab-explain">
-        <div id="ai-status"></div>
-        <div id="live">
-          <div class="live-head">▸ crawling: <span id="live-section">…</span></div>
-          <div id="live-text"></div>
-          <div id="live-key" hidden></div>
-        </div>
-        <div id="history"></div>
-        <div class="panel-actions">
-          <button id="export-md">⤓ export breakdown (.md)</button>
-        </div>
-      </section>
-
-      <section class="tab-body" id="tab-notes" hidden>
-        <p class="hint">Every metric, model and dataset the spider stepped on.</p>
-        <div id="notes-list"></div>
-        <div class="panel-actions">
-          <button id="export-notes">⤓ export notes (.json)</button>
-        </div>
-      </section>
-    </div>
+    </footer>
   </aside>
 
   <script type="module">
@@ -264,6 +265,36 @@
     intensitySel.addEventListener('change', () => crawler.setIntensity(intensitySel.value));
     levelSel.addEventListener('change', () => analyst.setLevel(levelSel.value));
 
+    // Segmented controls: each <select data-segmented> is hidden and mirrored
+    // by a row of buttons. syncSegments() re-reads the selects, since the
+    // keyboard shortcuts set them directly.
+    const segments = [];
+    for (const sel of document.querySelectorAll('select[data-segmented]')) {
+      const seg = document.createElement('div');
+      seg.className = 'segmented';
+      for (const o of sel.options) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = o.textContent;
+        b.dataset.value = o.value;
+        b.addEventListener('click', () => {
+          sel.value = o.value;
+          sel.dispatchEvent(new Event('change'));
+          syncSegments();
+        });
+        seg.append(b);
+      }
+      sel.hidden = true;
+      sel.after(seg);
+      segments.push([sel, seg]);
+    }
+    function syncSegments() {
+      for (const [sel, seg] of segments) {
+        for (const b of seg.children) b.classList.toggle('active', b.dataset.value === sel.value);
+      }
+    }
+    syncSegments();
+
     const INTENSITIES = { '1': 'calm', '2': 'normal', '3': 'wild' };
     const LEVELS = { b: 'beginner', s: 'student', r: 'researcher' };
 
@@ -292,6 +323,7 @@
       } else if (k === 'd') {
         crawler.drop();
       }
+      syncSegments();
     });
   </script>
 </body>

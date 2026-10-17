@@ -1,7 +1,7 @@
 #!/bin/bash
-# Auto-commit every 3 days: commits any pending changes in the repo with a
-# short, casual message (one of 10, never the same as the last commit) and
-# pushes. Does nothing if there are no changes. launchd wakes it daily (see
+# Auto-commit every 3 days: commits any pending changes in the repo (or an
+# empty commit if there are none) with a short, casual message (one of 10,
+# never the same as the last commit) and pushes. launchd wakes it daily (see
 # install.sh) and it skips until 3 days have passed since its last run.
 # Pass --force to run regardless. Safe to run by hand too.
 set -u
@@ -34,11 +34,6 @@ MESSAGES=(
 )
 
 git add -A   # .gitignore keeps .env, cache/ and papers/ out
-if git diff --cached --quiet; then
-  echo "$(date): nothing to commit"
-  exit 0
-fi
-
 # Pick a random message that differs from the previous commit's.
 LAST="$(git log -1 --pretty=%s 2>/dev/null)"
 MSG="$LAST"
@@ -46,6 +41,6 @@ while [ "$MSG" = "$LAST" ]; do
   MSG="${MESSAGES[$((RANDOM % ${#MESSAGES[@]}))]}"
 done
 
-git commit -q -m "$MSG" || exit 1
+git commit -q --allow-empty -m "$MSG" || exit 1
 git push -q origin HEAD 2>&1 || echo "$(date): push failed (offline?) - will go out with the next run"
 echo "$(date): committed \"$MSG\""

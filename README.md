@@ -165,7 +165,7 @@ Some papers have no HTML rendering (their LaTeX failed to convert). `fetch_paper
 
 ## Auto-commit every 3 days
 
-`tools/autocommit/` commits and pushes any pending changes every 3 days at 18:30. A macOS launchd agent wakes it daily, and the script skips until 3 days have passed since its last run (tracked in `.git/autocommit-last-run`). It uses one of 10 short, casual commit messages and never repeating the previous one. If nothing changed, it does nothing.
+`tools/autocommit/` commits and pushes every 3 days at 18:30. A macOS launchd agent wakes it daily, and the script skips until 3 days have passed since its last run (tracked in `.git/autocommit-last-run`). It uses one of 10 short, casual commit messages and never repeats the previous one. If nothing changed, it makes an empty commit, so there is always one every 3 days.
 
 ```bash
 ./tools/autocommit/install.sh             # install / reinstall
